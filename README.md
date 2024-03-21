@@ -1,5 +1,7 @@
 NvJpeg - Python
 ---------------------------
+# Reference
+https://docs.nvidia.com/cuda/nvjpeg/index.html
 
 ## Require
 * nvjpeg

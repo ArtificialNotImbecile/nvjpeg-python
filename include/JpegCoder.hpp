@@ -50,7 +50,7 @@ public:
     
     JpegCoderImage(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling);
     ~JpegCoderImage();
-    void fill(const unsigned char* data);
+    void fill(const unsigned char* y, const unsigned char* u, const unsigned char* v);
     unsigned char* buffer();
 };
 

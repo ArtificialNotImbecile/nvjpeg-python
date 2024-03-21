@@ -17,17 +17,17 @@ typedef struct
 
 JpegCoderImage::JpegCoderImage(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling){
     unsigned char * pBuffer = nullptr; 
-    cudaError_t eCopy = cudaMalloc((void **)&pBuffer, width * height * NVJPEG_MAX_COMPONENT);
+    cudaError_t eCopy = cudaMalloc((void **)&pBuffer, width * height * nChannel);
     if (cudaSuccess != eCopy){
         throw JpegCoderError(eCopy, cudaGetErrorString(eCopy));
     }
 
     nvjpegImage_t *img = (nvjpegImage_t*)malloc(sizeof(nvjpegImage_t));
-    for(int i = 0;i<NVJPEG_MAX_COMPONENT;i++){
+    for(int i = 0;i<nChannel;i++){
         img->channel[i] = pBuffer + (width*height*i);
         img->pitch[i] = (unsigned int)width;
     }
-    img->pitch[0] = (unsigned int)width*3;
+    // img->pitch[0] = (unsigned int)width*3;
 
     this->img = img;
     this->height = height;
@@ -36,10 +36,15 @@ JpegCoderImage::JpegCoderImage(size_t width, size_t height, short nChannel, Jpeg
     this->subsampling = subsampling;
 }
 
-void JpegCoderImage::fill(const unsigned char* data){
-    cudaError_t eCopy = cudaMemcpy(((nvjpegImage_t*)(this->img))->channel[0], data, width*height*3, cudaMemcpyHostToDevice);
-    if (cudaSuccess != eCopy){
-        throw JpegCoderError(eCopy, cudaGetErrorString(eCopy));
+void JpegCoderImage::fill(const unsigned char* y, const unsigned char* u, const unsigned char* v){
+    nvjpegImage_t* img = ((nvjpegImage_t*)(this->img));
+    // create yuv data
+    const unsigned char* data[3] = {y, u, v};
+    for (int i = 0; i < nChannel; i++) {
+        cudaError_t eCopy = cudaMemcpy(img->channel[i], data[i], width * height, cudaMemcpyHostToDevice);
+        if (cudaSuccess != eCopy) {
+            throw JpegCoderError(eCopy, cudaGetErrorString(eCopy));
+        }
     }
     this->subsampling = JPEGCODER_CSS_444;
 }
@@ -86,6 +91,7 @@ void JpegCoder::ensureThread(long threadIdent){
 }
 
 JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
+    // TODO, fix decode, it's not working with yuv
     nvjpegHandle_t nv_handle = JPEGCODER_GLOBAL_CONTEXT->nv_handle;
     nvjpegJpegState_t nv_statue = JPEGCODER_GLOBAL_CONTEXT->nv_statue;
 
@@ -116,7 +122,8 @@ JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
     nvjpegEncoderParamsSetOptimizedHuffman(nv_enc_params, 1, NULL);
     nvjpegEncoderParamsSetSamplingFactors(nv_enc_params, ChromaSubsampling_Covert_JpegCoderToNvJpeg(img->subsampling), NULL);
 
-    int nReturnCode = nvjpegEncodeImage(nv_handle, nv_enc_state, nv_enc_params, (nvjpegImage_t*)(img->img), NVJPEG_INPUT_BGRI, (int)img->width, (int)img->height, NULL);
+    // int nReturnCode = nvjpegEncodeImage(nv_handle, nv_enc_state, nv_enc_params, (nvjpegImage_t*)(img->img), NVJPEG_INPUT_BGRI, (int)img->width, (int)img->height, NULL);
+    int nReturnCode = nvjpegEncodeYUV(nv_handle, nv_enc_state, nv_enc_params, (nvjpegImage_t*)(img->img), NVJPEG_CSS_444, (int)img->width, (int)img->height, NULL);
     if (NVJPEG_STATUS_SUCCESS != nReturnCode){
         throw JpegCoderError(nReturnCode, "NvJpeg Encoder Error");
     }

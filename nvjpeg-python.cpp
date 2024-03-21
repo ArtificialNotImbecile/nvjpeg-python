@@ -81,21 +81,16 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
 
 static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
 {
-    PyArrayObject *vecin;
+    PyArrayObject *vecin_y, *vecin_u, *vecin_v;
     unsigned int quality = 70;
-    if (!PyArg_ParseTuple(Argvs, "O!|I", &PyArray_Type, &vecin, &quality)){
-        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array!");
+    if (!PyArg_ParseTuple(Argvs, "O!O!O!|I", &PyArray_Type, &vecin_y, &PyArray_Type, &vecin_u, &PyArray_Type, &vecin_v, &quality)){
+        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass Y, U, V image numpy arrays!");
         return NULL;
     }
 
-    if (NULL == vecin){
+    if (NULL == vecin_y || NULL == vecin_u || NULL == vecin_v){
         Py_INCREF(Py_None);
         return Py_None;
-    }
-
-    if (PyArray_NDIM(vecin) != 3){
-        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array by height*width*channel!");
-        return NULL;
     }
 
     if(quality>100){
@@ -104,17 +99,31 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
 
     JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
 
-    PyObject* bytes = PyObject_CallMethod((PyObject*)vecin, "tobytes", NULL);
+    PyObject* bytes_y = PyObject_CallMethod((PyObject*)vecin_y, "tobytes", NULL);
+    PyObject* bytes_u = PyObject_CallMethod((PyObject*)vecin_u, "tobytes", NULL);
+    PyObject* bytes_v = PyObject_CallMethod((PyObject*)vecin_v, "tobytes", NULL);
 
-    Py_buffer pyBuf;
+    Py_buffer pyBuf_y, pyBuf_u, pyBuf_v;
 
-    unsigned char* buffer;
-    PyArg_Parse(bytes, "y*", &pyBuf);
-    buffer = (unsigned char*)pyBuf.buf;
-    auto img = new JpegCoderImage(PyArray_DIM(vecin, 1), PyArray_DIM(vecin, 0), 3, JPEGCODER_CSS_444);
-    img->fill(buffer);
-    PyBuffer_Release(&pyBuf);
-    Py_DECREF(bytes);
+    unsigned char* buffer_y;
+    unsigned char* buffer_u;
+    unsigned char* buffer_v;
+    PyArg_Parse(bytes_y, "y*", &pyBuf_y);
+    PyArg_Parse(bytes_u, "y*", &pyBuf_u);
+    PyArg_Parse(bytes_v, "y*", &pyBuf_v);
+    buffer_y = (unsigned char*)pyBuf_y.buf;
+    buffer_u = (unsigned char*)pyBuf_u.buf;
+    buffer_v = (unsigned char*)pyBuf_v.buf;
+
+    auto img = new JpegCoderImage(PyArray_DIM(vecin_y, 1), PyArray_DIM(vecin_y, 0), 3, JPEGCODER_CSS_444);
+    img->fill(buffer_y, buffer_u, buffer_v);
+
+    PyBuffer_Release(&pyBuf_y);
+    PyBuffer_Release(&pyBuf_u);
+    PyBuffer_Release(&pyBuf_v);
+    Py_DECREF(bytes_y);
+    Py_DECREF(bytes_u);
+    Py_DECREF(bytes_v);
 
     m_handle->ensureThread(PyThread_get_thread_ident());
     auto data = m_handle->encode(img, quality);
@@ -126,7 +135,6 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
     
     return rtn;
 }
-
 static PyObject* NvJpeg_read(NvJpeg* Self, PyObject* Argvs)
 {
     JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
